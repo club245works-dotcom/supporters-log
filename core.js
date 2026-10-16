@@ -1,0 +1,13 @@
+/* Calculation policy is independent of the UI. Record snapshots protect past costs. */
+(function(root){
+const efficiencies={normal:10,kei:15};
+// Decimal arithmetic avoids binary floating-point turning an exact integer into
+// 16.999999999999996 before flooring. Do not round a leg before division.
+function fraction(value){const [mantissa,exponent='0']=Number(value).toString().split('e');const parts=mantissa.split('.');const power=(parts[1]?.length||0)-Number(exponent);const digits=BigInt(parts.join(''));return power>=0?[digits,10n**BigInt(power)]:[digits*10n**BigInt(-power),1n];}
+function amount(leg){const [d,dd]=fraction(leg.distance),[p,pd]=fraction(leg.price),[t,td]=fraction(leg.toll);const denominator=dd*BigInt(efficiencies[leg.car])*pd*td;const numerator=d*p*td+t*dd*BigInt(efficiencies[leg.car])*pd;return {numerator,denominator};}
+const policies={equalFamily(leg,cost){const count=leg.riders.length;const perFamily=Number(cost.numerator/(cost.denominator*BigInt(count)));const total=perFamily*count;return {total,perFamily,shares:Object.fromEntries(leg.riders.map(id=>[id,perFamily])),rawTotal:Number(leg.distance)/efficiencies[leg.car]*Number(leg.price)+Number(leg.toll),discarded:Number(cost.numerator-BigInt(total)*cost.denominator)/Number(cost.denominator)};}};
+function calculate(leg){if(!efficiencies[leg.car]||!leg.driver||!Array.isArray(leg.riders)||!leg.riders.length||new Set(leg.riders).size!==leg.riders.length)throw Error('担当家族と乗車家族を選んでください');for(const k of ['distance','toll','price'])if(!Number.isFinite(Number(leg[k]))||Number(leg[k])<0||Number(leg[k])>1000000)throw Error('距離・高速料金・単価は0以上の数値にしてください');if(Number(leg.price)===0)throw Error('ガソリン単価は0より大きくしてください');const cost=amount(leg);const policy=policies[leg.policy||'equalFamily'];if(typeof policy!=='function')throw Error('未対応の精算ルールです');return policy(leg,cost);}
+function summarize(records,families){const rows=Object.fromEntries(families.map(f=>[f.id,{id:f.id,paid:0,owed:0,balance:0}]));for(const rec of records)for(const leg of rec.legs){const c=calculate(leg);rows[leg.driver].paid+=c.total;for(const [id,n]of Object.entries(c.shares))rows[id].owed+=n;}for(const r of Object.values(rows))r.balance=r.paid-r.owed;return Object.values(rows);}
+function transfers(rows){const plus=rows.filter(r=>r.balance>0).map(r=>({...r,n:r.balance})),minus=rows.filter(r=>r.balance<0).map(r=>({...r,n:-r.balance}));const out=[];let a=0,b=0;while(a<minus.length&&b<plus.length){const n=Math.min(minus[a].n,plus[b].n);out.push({from:minus[a].id,to:plus[b].id,amount:n});minus[a].n-=n;plus[b].n-=n;if(!minus[a].n)a++;if(!plus[b].n)b++;}return out;}
+const api={calculate,summarize,transfers,efficiencies};if(typeof module!=='undefined')module.exports=api;root.RideCore=api;
+})(globalThis);
