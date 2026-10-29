@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#145e4c"><meta name="description" content="5家族で使うサッカー送迎ノート"><title>Supporters’ log Ver.1.1 開発版</title><link rel="stylesheet" href="base.css"><link rel="stylesheet" href="style.css"></head>
+<body><header class="app-header"><img src="assets/shimanami-fc.png" alt="SHIMANAMI FC"><div><h1>Supporters’ log</h1><p>Ver.1.1 開発版</p></div><img src="assets/espoir-ob.png" alt="エスポワール尾道南OB"></header>
+<main>
+<section id="connection" class="card"><h2>共有ノートを開く</h2><p id="connectionMessage" role="status">接続設定を確認しています。</p><div id="deviceRegistration" hidden><p>初回は、この端末のIDを管理者へLINEで伝えて承認を受けてください。</p><label>この端末のID<input id="deviceId" readonly></label><div class="actions"><button id="copyId" type="button">IDをコピー</button><button id="checkApproval" type="button">承認を確認</button></div><p class="hint">端末やLINE・Safariの開き方を変えると、別の承認が必要な場合があります。</p></div><button id="startDemo" type="button" class="secondary">デモで操作を試す</button><p class="hint">デモはこのブラウザー専用です。5家族への共有・本番移行は行いません。</p></section>
+<section id="familyPanel" class="card" hidden><h2>家族を選んでください</h2><p>履歴に「選択された家族名」として記録します。</p><select id="firstFamily" aria-label="初回の家族選択"></select><button id="chooseFamily" class="primary" type="button">この家族で開く</button></section>
+<div id="workspace" hidden>
+ <div id="modeBanner" class="notice" role="status"></div>
+ <div class="topline"><label>選択家族<select id="familySelect"></select></label><button id="settingsBtn" type="button" class="textbtn">使い方・保存</button></div>
+ <p id="syncStatus" class="sync" role="status" aria-live="polite"></p>
+ <section id="overview">
+  <div class="month-row"><button id="previousMonth" type="button" aria-label="前月">‹</button><label>表示月<input type="month" id="month" min="2020-01" max="2100-12"></label><button id="nextMonth" type="button" aria-label="翌月">›</button></div>
+  <div class="toggle"><button id="ridesOnly" aria-pressed="true" type="button">送迎日のみ</button><button id="allDays" aria-pressed="false" type="button">全日表示</button></div>
+  <button id="addRide" class="primary add" type="button">＋送迎を追加</button>
+  <div class="table-controls"><span>表の大きさ</span><button type="button" data-scale="0.85" aria-pressed="false">小</button><button type="button" data-scale="1" aria-pressed="true">標準</button><button type="button" data-scale="1.2" aria-pressed="false">大</button><span class="hint">左右にスクロール →</span></div>
+  <div id="calendarWrap" class="calendar-wrap"><table id="calendar" aria-label="日付別・往復別の送迎カレンダー"><colgroup><col class="date-column"><col><col></colgroup><thead><tr><th class="sticky-date" scope="col">日付</th><th scope="col">往路</th><th scope="col">復路</th></tr></thead><tbody id="calendarBody"></tbody></table></div>
+  <p class="hint">○ 乗車 ／ — 未乗車。日付を押すと編集できます。二本指でページを拡大できます。</p>
+  <section class="card monthly"><h2 id="summaryTitle">月間精算</h2><div id="stats" class="stats"></div><div id="balances"></div><p id="calculationNote" class="hint"></p><details><summary>家族間の精算案</summary><div id="transfers"></div></details></section>
+  <section class="card"><h3>取消済みの記録</h3><div id="cancelledList"></div></section>
+ </section>
+ <section id="entry" hidden>
+  <h2 id="formTitle">送迎を記録</h2><p id="editNotice" class="notice" hidden></p>
+  <form id="rideForm"><article class="card"><div class="grid"><label>日付<input id="date" type="date" min="2020-01-01" max="2100-12-31" required></label><label>活動<select id="kind"><option>練習</option><option>試合</option><option>その他</option></select></label></div><label>登録済みの経路<select id="route"><option value="">経路を選ぶ（任意）</option></select></label><label>会場<input id="venue" required maxlength="80"></label><label>メモ<textarea id="note" maxlength="200" rows="2"></textarea></label></article><div id="legs"></div><div class="card"><p>今回の費用 <strong id="previewTotal">¥0</strong></p><p id="formError" role="alert"></p><div id="conflictPanel" hidden><h3>最新内容との差を確認してください</h3><p>あなたの入力は画面と下書きに残しています。</p><pre id="latestContent"></pre><button id="useLatestBase" type="button" class="secondary">差を確認し、この入力で再編集する</button></div><div class="actions"><button id="saveRide" class="primary" type="submit">保存して戻る</button><button id="cancelEdit" class="secondary" type="button">戻る</button><button id="historyBtn" type="button" class="textbtn">履歴</button></div></div></form>
+ </section>
+ <section class="card" id="draftCard" hidden><h3>未保存の下書きがあります</h3><p id="draftInfo"></p><button id="resumeDraft" type="button">下書きを開く</button></section>
+</div>
+<dialog id="dayDialog"><h2 id="dayTitle"></h2><div id="dayRecords"></div><button id="addCar" type="button" class="primary">この日に別の車を追加</button><button type="button" data-close="dayDialog">閉じる</button></dialog>
+<dialog id="historyDialog"><h2>変更履歴</h2><p id="historyMessage" role="status"></p><div id="historyList"></div><button type="button" data-close="historyDialog">閉じる</button></dialog>
+<dialog id="helpDialog"><h2>使い方・バックアップ</h2><p>日付を押して送迎記録を追加・編集します。片道だけなら不要な区間のチェックを外します。複数台は車ごとに別の記録を追加します。</p><p>料金表は往復額の半額を片道に使用します。手入力は片道の費用合計です。高速料金・単価を二重加算しません。配分の小数は保持し、月末の表示のみ円単位に丸めます。</p><p>取り消した記録は残り、取消済み一覧から復元できます。全員が全記録を編集できますが、ほかの端末の変更を無条件に上書きしません。</p><p>JSONは全期間・取消済み記録・履歴を含む復元用、CSVはExcelでの確認用です。月末や端末変更前に保存してください。この画面から共有データを全置換する機能はありません。</p><div class="actions"><button id="exportJson" type="button">JSONを保存</button><button id="exportCsv" type="button">CSVを保存</button></div><p id="exportStatus" role="status"></p><p id="deviceNote" class="hint"></p><button type="button" data-close="helpDialog">閉じる</button></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<footer>5家族でつなぐ、グラウンドまでの道。<small>開発版 · 月末の内容確認と精算はLINEで行います。</small></footer>
+</main><script src="config.js"></script><script type="module" src="app.js"></script></body></html>
