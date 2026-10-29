@@ -25,7 +25,45 @@ function settings(){$('familyFields').innerHTML=state.families.map((f,i)=>`<labe
 $('settingsForm').onsubmit=e=>{e.preventDefault();safe(()=>{const names=state.families.map((_,i)=>$('family'+i).value.trim());if(names.some(x=>!x)||new Set(names).size!==5)throw Error('5家族それぞれに異なる名前を入力してください');change(s=>{s.families.forEach((f,i)=>f.name=names[i]);s.price=Number($('gasPrice').value);});toast('設定を保存しました');});};
 function renderRoutes(){$('routeList').innerHTML=state.routes.map(r=>`<div class="routeitem"><span>${esc(r.name)} · 片道 ${r.distance}km / 高速 ${yen(r.toll)}</span><button class="textbtn" data-route-delete="${esc(r.id)}">削除</button></div>`).join('');document.querySelectorAll('[data-route-delete]').forEach(b=>b.onclick=()=>safe(()=>{change(s=>s.routes=s.routes.filter(r=>r.id!==b.dataset.routeDelete));renderRoutes();}));}
 $('routeForm').onsubmit=e=>{e.preventDefault();safe(()=>{change(s=>s.routes.push({id:crypto.randomUUID(),name:$('routeName').value.trim(),distance:Number($('routeDistance').value),toll:Number($('routeToll').value)}));$('routeForm').reset();renderRoutes();toast('経路を追加しました');});};
-$('exportBtn').onclick=()=>{if(needsRestore){toast('保存データを読み込めないため、既存のバックアップから復元してください。');return;}const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='okuriai-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);};$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>5000000)throw Error('ファイルが大きすぎます（上限5MB）');const next=validate(JSON.parse(await file.text()));if(confirm(`${next.records.length}件の送迎記録を読み込み、現在のデータを置き換えます。よろしいですか？`)){commit(next,true);settings();render();toast('バックアップを読み込みました');}}catch(e){toast('読み込みできません：'+e.message);}finally{$('importFile').value='';}};
+$('exportBtn').onclick=()=>{
+ if(needsRestore){toast('保存データを読み込めないため、既存のバックアップから復元してください。');return;}
+ const text=JSON.stringify(state,null,2),filename='okuriai-'+today()+'.json';
+ const dialog=document.createElement('dialog');
+ dialog.style.cssText='max-width:min(620px,calc(100vw - 24px));max-height:85vh;overflow:auto;padding:20px;border:1px solid #ccd9d0;border-radius:14px';
+ dialog.setAttribute('aria-label','バックアップを取り出す');
+ dialog.innerHTML='<h2>バックアップを取り出す</h2><p data-summary></p><p>LINEでファイルを保存できない場合は、下のデータをコピーして、この相談チャットに貼り付けてください。</p><label>バックアップデータ（JSON）<textarea data-json readonly spellcheck="false" rows="8" style="display:block;width:100%;font-size:16px;line-height:1.4;padding:10px;box-sizing:border-box"></textarea></label><div class="actions"><button type="button" class="primary" data-copy>データをコピー</button><button type="button" class="secondary" data-select>すべて選択</button><button type="button" class="secondary" data-share>共有からファイルに保存</button><button type="button" class="textbtn" data-download>従来のダウンロード</button></div><p data-status role="status" aria-live="polite"></p><p class="hint">この操作は記録を変更・削除しません。共有やダウンロードの開始だけでは保存完了ではありません。保存先でファイルを確認してください。</p><button type="button" class="secondary" data-close>閉じる</button>';
+ const box=dialog.querySelector('[data-json]'),status=dialog.querySelector('[data-status]');
+ box.value=text;
+ dialog.querySelector('[data-summary]').textContent=filename+' ／ 全期間 '+state.records.length+'件';
+ const selectAll=()=>{box.focus();box.select();box.setSelectionRange(0,text.length);};
+ dialog.querySelector('[data-select]').onclick=()=>{selectAll();status.textContent='データ全体を選択しました。「コピー」を選んでください。選択できない場合は枠内を長押しし、「すべて選択」→「コピー」を選んでください。';};
+ dialog.querySelector('[data-copy]').onclick=async()=>{
+  try{
+   if(!navigator.clipboard?.writeText)throw Error('clipboard-unavailable');
+   await navigator.clipboard.writeText(text);
+   status.textContent='コピーしました。この相談チャットの入力欄を長押しして「ペースト」してください。';
+  }catch{
+   selectAll();
+   status.textContent='自動コピーできませんでした。下の枠内を長押しし、「すべて選択」→「コピー」で取り出してください。';
+  }
+ };
+ let file;
+ try{file=new File([text],filename,{type:'application/json'});}catch{}
+ const share=dialog.querySelector('[data-share]');
+ try{share.hidden=!(file&&navigator.share&&navigator.canShare?.({files:[file]}));}catch{share.hidden=true;}
+ share.onclick=async()=>{
+  try{await navigator.share({files:[file],title:'Supporters’ log バックアップ'});status.textContent='共有先で保存を完了し、ファイルがあることを確認してください。';}
+  catch(e){status.textContent=e.name==='AbortError'?'共有をキャンセルしました。データのコピーも利用できます。':'この環境ではファイル共有できません。データをコピーして取り出してください。';}
+ };
+ dialog.querySelector('[data-download]').onclick=()=>{
+  const blob=new Blob([text],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  status.textContent='ダウンロードを開始しました。何も起きない場合は「データをコピー」を使ってください。';
+ };
+ dialog.querySelector('[data-close]').onclick=()=>dialog.close();
+ dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+ document.body.appendChild(dialog);dialog.showModal();
+};$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>5000000)throw Error('ファイルが大きすぎます（上限5MB）');const next=validate(JSON.parse(await file.text()));if(confirm(`${next.records.length}件の送迎記録を読み込み、現在のデータを置き換えます。よろしいですか？`)){commit(next,true);settings();render();toast('バックアップを読み込みました');}}catch(e){toast('読み込みできません：'+e.message);}finally{$('importFile').value='';}};
 $('demoBtn').onclick=()=>{if(!confirm('表示中の月に架空のサンプルを1件追加します。実際の精算には使わず、確認後は削除してください。'))return;safe(()=>{const date=($('month').value||today().slice(0,7))+'-01';change(s=>s.records.push({id:crypto.randomUUID(),date,kind:'練習',venue:'サンプル：市民グラウンド',note:'架空データです。確認後に削除してください。',sample:true,legs:[{direction:'out',driver:'f0',car:'normal',distance:20,toll:500,price:170,riders:['f0','f1','f2','f3','f4'],policy:'equalFamily',fareMode:'table',fareKey:'ikuchi-holiday',fareVersion:C.fareVersion},{direction:'back',driver:'f1',car:'kei',distance:20,toll:500,price:170,riders:['f0','f1','f2'],policy:'equalFamily',fareMode:'table',fareKey:'ikuchi-holiday',fareVersion:C.fareVersion}]}));render();toast('サンプルを追加しました。「月の精算」で確認できます');});};
 render();resetForm();
 })();
