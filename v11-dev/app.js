@@ -32101,6 +32101,11 @@ var ConflictError = class extends Error {
     this.latest = latest;
   }
 };
+function checkOctober(records2) {
+  const list = records2.filter((r2) => r2.date.startsWith("2026-10") && !r2.cancelled);
+  const s2 = summary(list), expected = [-4831, -943, 5173, -4102, 4703];
+  return { passed: s2.count === 13 && s2.total === 27546 && s2.rows.every((r2, i2) => r2.displayBalance === expected[i2]), actual: { count: s2.count, total: s2.total, balances: s2.rows.map((r2) => ({ family: familyName(r2.id), balance: r2.displayBalance })) }, expected: { count: 13, total: 27546, balances: expected } };
+}
 
 // src/repository.mjs
 var fromData = (id, s2) => ({ id, date: s2.data.day.toDate().toISOString().slice(0, 10), kind: s2.data.kind, venue: s2.data.venue, note: s2.data.note, legs: s2.data.legs, ...s2, data: void 0 });
@@ -32221,6 +32226,53 @@ function validateSettings(s2) {
   const price = s2.price ?? 170, routes = s2.routes ?? [];
   if (!Number.isInteger(price) || price < 1 || price > 1e4 || !Array.isArray(routes) || routes.length > 100 || routes.some((r2) => typeof r2.id !== "string" || typeof r2.name !== "string" || !r2.name.trim() || r2.name.length > 80 || !Number.isFinite(r2.distance) || r2.distance < 0 || r2.distance > 1e4 || !Number.isFinite(r2.toll) || r2.toll < 0 || r2.toll > 1e6)) throw Error("\u5171\u6709\u306E\u7D4C\u8DEF\u8A2D\u5B9A\u306B\u4E0D\u6B63\u306A\u5024\u304C\u3042\u308A\u307E\u3059\u3002\u7BA1\u7406\u8005\u306B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
   return { price, routes };
+}
+
+// src/october-import.mjs
+function prepareOctober(source) {
+  if (source?.version !== 1 || !Array.isArray(source.records) || source.records.length !== 13 || !Array.isArray(source.families) || source.families.length !== 5) throw Error("\u691C\u8A3C\u6E08\u307F\u306EVer.1.0\u30FB10\u670813\u4EF6\u306EJSON\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044");
+  const mapping = /* @__PURE__ */ new Map();
+  for (const f of source.families) {
+    const match = FAMILIES.find((x2) => x2.name === f.name?.trim());
+    if (!match || mapping.has(f.id)) throw Error("\u5BB6\u65CF\u540D\u306E\u5BFE\u5FDC\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
+    mapping.set(f.id, match.id);
+  }
+  if (new Set(mapping.values()).size !== 5) throw Error("5\u5BB6\u65CF\u306E\u5BFE\u5FDC\u304C\u4E0D\u5B8C\u5168\u3067\u3059");
+  const records2 = source.records.map((r2) => {
+    if (r2.cancelled || !r2.date?.startsWith("2026-10-")) throw Error("\u53D6\u6D88\u6E08\u307F\u30FB10\u6708\u4EE5\u5916\u306E\u8A18\u9332\u306F\u53D6\u308A\u8FBC\u3081\u307E\u305B\u3093");
+    return cleanRecord({ ...r2, legs: r2.legs.map((l2) => ({ ...l2, driver: mapping.get(l2.driver), riders: l2.riders.map((x2) => mapping.get(x2)), fareMode: l2.fareMode || "legacy", ...l2.fareMode === "table" ? { fareVersion: l2.fareVersion || Core.fareVersion } : {} })) });
+  }).sort((a, b2) => a.date.localeCompare(b2.date) || a.id.localeCompare(b2.id));
+  if (new Set(records2.map((r2) => r2.id)).size !== 13) throw Error("\u5143\u306E\u8A18\u9332ID\u304C\u91CD\u8907\u3057\u3066\u3044\u307E\u3059");
+  const result = checkOctober(records2);
+  if (!result.passed) throw Error("\u691C\u8A3C\u6E08\u307F\u306E\u4EF6\u6570\u30FB\u5408\u8A08\u30FB\u5BB6\u65CF\u5225\u7CBE\u7B97\u984D\u3068\u4E00\u81F4\u3057\u307E\u305B\u3093\u3002\u53D6\u8FBC\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+  return { records: records2.map((r2, i2) => ({ ...r2, id: "import-oct2026-" + String(i2 + 1).padStart(2, "0") })), result };
+}
+function checkImportExisting(planned, existing) {
+  const byId = new Map(planned.map((r2) => [r2.id, r2]));
+  for (const r2 of existing) {
+    const expected = byId.get(r2.id);
+    if (expected) {
+      if (r2.cancelled || JSON.stringify(cleanRecord(r2)) !== JSON.stringify(expected)) throw Error("\u53D6\u8FBC\u5148\u306E\u8A18\u9332\u304C\u5909\u66F4\u3055\u308C\u3066\u3044\u307E\u3059\u3002\u4E0A\u66F8\u304D\u305B\u305A\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+    } else if (!r2.cancelled && r2.date.startsWith("2026-10-")) throw Error("10\u6708\u306B\u5225\u306E\u6709\u52B9\u306A\u8A18\u9332\u304C\u3042\u308A\u307E\u3059\u3002\u7BA1\u7406\u8005\u306B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
+  }
+  return new Set(existing.filter((r2) => byId.has(r2.id)).map((r2) => r2.id));
+}
+async function importOctober(repo2, planned, family, onProgress, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
+  const existing = await repo2.backup(), done = checkImportExisting(planned, existing.records);
+  await wait(3500);
+  for (const r2 of planned) {
+    if (done.has(r2.id)) continue;
+    onProgress(done.size, 13);
+    await repo2.save(r2, { baseRevision: 0, selectedFamilyId: family, operationId: newId(), action: "create" });
+    done.add(r2.id);
+    onProgress(done.size, 13);
+    await wait(3500);
+  }
+  const after = await repo2.backup();
+  checkImportExisting(planned, after.records);
+  const result = checkOctober(after.records);
+  if (!result.passed) throw Error("\u53D6\u8FBC\u5F8C\u306E\u7167\u5408\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093\u3002\u8FFD\u52A0\u64CD\u4F5C\u3092\u6B62\u3081\u3066\u7BA1\u7406\u8005\u306B\u9023\u7D61\u3057\u3066\u304F\u3060\u3055\u3044");
+  return result;
 }
 
 // src/demo.mjs
@@ -32620,6 +32672,47 @@ async function download(type) {
     $2("exportJson").disabled = $2("exportCsv").disabled = false;
   }
 }
+var octoberPlan = null;
+$2("octoberFile").onchange = async () => {
+  octoberPlan = null;
+  $2("startOctoberImport").disabled = true;
+  try {
+    const file = $2("octoberFile").files[0];
+    if (!file) return;
+    if (file.size > 1e6) throw Error("\u30D5\u30A1\u30A4\u30EB\u304C\u5927\u304D\u3059\u304E\u307E\u3059");
+    octoberPlan = prepareOctober(JSON.parse(await file.text()));
+    $2("octoberStatus").textContent = "\u7167\u5408\u6E08\u307F\uFF1A13\u4EF6\u30FB27,546\u5186\u3002\u5927\u672C \u22124,831\u5186\uFF0F\u534A\u7530 \u2212943\u5186\uFF0F\u85E4\u672C \uFF0B5,173\u5186\uFF0F\u672C\u6751 \u22124,102\u5186\uFF0F\u5409\u672C \uFF0B4,703\u5186\u3002";
+    $2("startOctoberImport").disabled = false;
+  } catch (e2) {
+    $2("octoberStatus").textContent = errorMessage(e2);
+  }
+};
+$2("startOctoberImport").onclick = async () => {
+  if (saving || !octoberPlan) return;
+  if (demo || repo.clubId !== "shimanami" || window.SupportersConfig?.firebase?.projectId !== "supporters-log-v11-dev") {
+    $2("octoberStatus").textContent = "\u3053\u306E\u53D6\u8FBC\u306F\u958B\u767A\u7528\u306E\u5171\u6709\u30CE\u30FC\u30C8\u5C02\u7528\u3067\u3059";
+    return;
+  }
+  if (!confirm("10\u670813\u4EF6\u3092\u958B\u767A\u7248\u306E\u5171\u6709\u5148\u306B\u8FFD\u52A0\u3057\u307E\u3059\u3002\u7D041\u5206\u304B\u304B\u308A\u307E\u3059\u3002\u53D6\u8FBC\u4E2D\u306F\u4E21\u7AEF\u672B\u3067\u7DE8\u96C6\u305B\u305A\u3001\u3053\u306E\u753B\u9762\u3092\u958B\u3044\u305F\u307E\u307E\u306B\u3057\u3066\u304F\u3060\u3055\u3044\u3002")) return;
+  saving = true;
+  $2("startOctoberImport").disabled = $2("octoberFile").disabled = true;
+  try {
+    const plan = octoberPlan;
+    await importOctober(repo, plan.records, selected, (n2, total) => {
+      $2("octoberStatus").textContent = `\u5171\u6709\u5148\u306B\u53D6\u8FBC\u4E2D\uFF1A${n2}\uFF0F${total}\u4EF6\u3002\u753B\u9762\u3092\u9589\u3058\u305A\u306B\u304A\u5F85\u3061\u304F\u3060\u3055\u3044\u3002`;
+    });
+    $2("octoberStatus").textContent = "\u53D6\u8FBC\u5B8C\u4E86\u30FB\u518D\u53D6\u5F97\u3057\u3066\u7167\u5408\u6E08\u307F\uFF1A13\u4EF6\u30FB27,546\u5186\u30015\u5BB6\u65CF\u306E\u7CBE\u7B97\u984D\u3082\u4E00\u81F4\u3057\u307E\u3057\u305F\u3002";
+    $2("month").value = "2026-10";
+    watchMonth();
+    octoberPlan = null;
+  } catch (e2) {
+    $2("octoberStatus").textContent = errorMessage(e2) + "\u3002\u540C\u3058\u30D5\u30A1\u30A4\u30EB\u3067\u518D\u5B9F\u884C\u3059\u308B\u3068\u4FDD\u5B58\u6E08\u307F\u306E\u540C\u4E00\u8A18\u9332\u306F\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3059\u3002";
+  } finally {
+    saving = false;
+    $2("octoberFile").disabled = false;
+    $2("startOctoberImport").disabled = !octoberPlan;
+  }
+};
 $2("chooseFamily").onclick = () => {
   const id = $2("firstFamily").value;
   if (!IDS.includes(id)) return;
